@@ -1,0 +1,20 @@
+[Unit]
+Description=Astromech Droid Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+WorkingDirectory=/home/mcgachey/code/astromech_server/
+ExecStart=/bin/bash /home/mcgachey/code/astromech_server/bin/astromech_service.sh
+Restart=always
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=Astromech
+User=mcgachey
+Group=mcgachey
+
+[Install]
+WantedBy=multi-user.target
+
+
+
