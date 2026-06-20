@@ -4,6 +4,6 @@ droids:
     personality: resistance_blue
     type: r2
   - alias: bb-6l
-    mac_address: "F6:C0:18:63:D0:ED"
+    mac_address: "FE:C0:18:63:D0:ED"
     personality: resistance_blue
     type: bb
