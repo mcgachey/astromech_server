@@ -68,10 +68,10 @@ async def main():
   beacon_payload = location_beacon_payload(location_id=4)
   await asyncio.gather(
       serve(app, config),
-      droid.keep_alive(
-        heartbeat_success=_heartbeat_success,
-        heartbeat_failure=_heartbeat_failure,
-      ),
+      # droid.keep_alive(
+      #   heartbeat_success=_heartbeat_success,
+      #   heartbeat_failure=_heartbeat_failure,
+      # ),
       run_beacon(beacon_payload),
   )
 
