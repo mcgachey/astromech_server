@@ -6,7 +6,7 @@ from hypercorn.asyncio import serve
 import requests
 import yaml
 
-from libastromech import Astromech, Personality, R2_Unit, BB_Unit, personality_beacon_payload, run_beacon
+from libastromech import Astromech, Personality, R2_Unit, BB_Unit, personality_beacon_payload, run_beacon, start_beacon
 import secure
 
 app = Flask(__name__)
@@ -86,11 +86,7 @@ def update_ha(available: bool):
   if response.status_code != 200:
     print(f"Response: {response}")
 
-async def main():
-  config = Config()
-  config.bind = '0.0.0.0:5050'
-  beacon_payload = personality_beacon_payload(affiliation='silent', chip_id=0x01)
-  load_droids('/config/droids.yml')
+async def connect_droids():
   for alias, droid in droids.items():
     if alias == droid.mac_address:
       continue
@@ -100,13 +96,17 @@ async def main():
       print(f"Connected to {alias}", flush=True)
     except Exception as e:
       print(f"Could not connect to {alias}: {e}", flush=True)
+
+async def main():
+  config = Config()
+  config.bind = '0.0.0.0:5050'
+  beacon_payload = personality_beacon_payload(affiliation='silent', chip_id=0x01)
+  load_droids('/config/droids.yml')
+  start_beacon(beacon_payload)
   await asyncio.gather(
       serve(app, config),
-      # droid.keep_alive(
-      #   heartbeat_success=_heartbeat_success,
-      #   heartbeat_failure=_heartbeat_failure,
-      # ),
       run_beacon(beacon_payload),
+      connect_droids(),
   )
 
 if __name__ == '__main__':
