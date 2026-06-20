@@ -1,0 +1,9 @@
+droids:
+  - alias: r2-t2
+    mac_address: "F7:E6:74:95:E5:53"
+    personality: resistance_blue
+    type: r2
+  - alias: bb-6l
+    mac_address: "F6:C0:18:63:D0:ED"
+    personality: resistance_blue
+    type: bb
