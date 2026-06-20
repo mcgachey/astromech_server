@@ -22,12 +22,16 @@ Runs a location beacon (location ID 4) via `hcitool` alongside the server. This 
 
 ## Deployment
 
-Deploys to a host aliased `r2t2` (Raspberry Pi or similar BLE-capable device).
+Runs as a Docker container on a Raspberry Pi (or similar BLE-capable device) aliased `r2t2`.
 
-- `bin/deploy.sh` - Copies source to `r2t2:~/code/astromech_server` and restarts the systemd service.
-- `bin/install.sh` - Initial setup: copies repo, creates virtualenv, installs systemd service.
-- `bin/astromech_service.sh` - Systemd ExecStart script: activates virtualenv, installs deps, runs `src/server.py`.
-- `astromech.service` - systemd unit file. Runs as user `mcgachey`, restarts always.
+- `bin/run_docker.sh <config-dir>` - Builds the image and runs the container with `--restart unless-stopped` for durability across reboots. Requires a config directory containing `droids.yml`.
+- `Dockerfile` - Builds from `python:3.12-slim`, installs `bluez`/`dbus`, bundles `libastromech` and server source.
+- `config/droids.yml` - Droid configuration (MAC addresses, personalities, HA entities).
+
+### Deprecated (systemd service)
+
+The following are deprecated in favor of Docker:
+- `bin/deploy.sh`, `bin/install.sh`, `bin/astromech_service.sh`, `astromech.service`
 
 ## Dependencies
 

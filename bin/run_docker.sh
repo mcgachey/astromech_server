@@ -18,7 +18,11 @@ docker build \
     -f "$PROJECT_DIR/Dockerfile" \
     "$CONTEXT_DIR"
 
-docker run --rm \
+docker rm -f astromech-server 2>/dev/null || true
+
+docker run -d \
+    --name astromech-server \
+    --restart unless-stopped \
     --net=host \
     --privileged \
     -v /var/run/dbus:/var/run/dbus \

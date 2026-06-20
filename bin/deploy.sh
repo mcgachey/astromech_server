@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# DEPRECATED: Use bin/run_docker.sh instead. See README.md.
+echo "WARNING: deploy.sh is deprecated. Use bin/run_docker.sh instead." >&2
 set -e
 
 export CODE_BASE=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )/..
