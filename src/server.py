@@ -5,7 +5,7 @@ from hypercorn.config import Config
 from hypercorn.asyncio import serve
 import requests
 
-from libastromech import Astromech, Personality, R2_Unit
+from libastromech import Astromech, Personality, R2_Unit, location_beacon_payload, run_beacon
 import secure
 
 app = Flask(__name__)
@@ -65,12 +65,14 @@ def update_ha(available: bool):
 async def main():
   config = Config()
   config.bind = '0.0.0.0:5050'
+  beacon_payload = location_beacon_payload(location_id=4)
   await asyncio.gather(
       serve(app, config),
       droid.keep_alive(
         heartbeat_success=_heartbeat_success,
         heartbeat_failure=_heartbeat_failure,
-      )
+      ),
+      run_beacon(beacon_payload),
   )
 
 if __name__ == '__main__':
