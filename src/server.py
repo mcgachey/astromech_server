@@ -72,7 +72,7 @@ async def play_sounds(droid: Astromech):
   for sound in droid.personality.sounds[0:7]:
     await droid.play(sound, wait=True)
 
-def update_ha(entity: str, available: bool):
+def _update_ha_sync(entity: str, available: bool):
   try:
     response = requests.post(
         url=f"http://colossus.home.mcgachey.org:8123/api/states/{entity}",
@@ -80,11 +80,16 @@ def update_ha(entity: str, available: bool):
         json={
             'state': 'on' if available else 'off',
           },
+        timeout=10,
     )
     if response.status_code != 200:
       print(f"[heartbeat] HA update failed for {entity}: {response}", flush=True)
   except Exception as e:
     print(f"[heartbeat] HA update error for {entity}: {e}", flush=True)
+
+async def update_ha(entity: str, available: bool):
+  loop = asyncio.get_running_loop()
+  await loop.run_in_executor(None, _update_ha_sync, entity, available)
 
 async def heartbeat_loop():
   while True:
@@ -93,8 +98,12 @@ async def heartbeat_loop():
       droid = droids.get(alias)
       if not droid:
         continue
-      available = droid._client is not None and droid._client.is_connected
-      update_ha(entity, available)
+      try:
+        await droid.ping()
+        available = True
+      except Exception:
+        available = False
+      await update_ha(entity, available)
       print(f"[heartbeat] {alias}: {'on' if available else 'off'}", flush=True)
 
 async def connect_droids():
