@@ -3,7 +3,9 @@ droids:
     mac_address: "F7:E6:74:95:E5:53"
     personality: resistance_blue
     type: r2
+    home_assistant_entity: binary_sensor.r2_t2
   - alias: bb-6l
     mac_address: "FE:C0:18:63:D0:ED"
     personality: resistance_blue
     type: bb
+    home_assistant_entity: binary_sensor.bb_6l

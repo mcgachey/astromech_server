@@ -12,6 +12,7 @@ import secure
 app = Flask(__name__)
 asgi_app = WsgiToAsgi(app)
 droids: dict[str, Astromech] = {}
+ha_entities: dict[str, str] = {}
 
 DROID_TYPES = {
   'r2': R2_Unit,
@@ -30,6 +31,8 @@ def load_droids(config_path: str):
     droids[entry['alias']] = droid
     if entry['mac_address'] not in aliases:
       droids[entry['mac_address']] = droid
+    if 'home_assistant_entity' in entry:
+      ha_entities[entry['alias']] = entry['home_assistant_entity']
 
 def get_droid(droid_id: str) -> Astromech:
   droid = droids.get(droid_id)
@@ -69,22 +72,30 @@ async def play_sounds(droid: Astromech):
   for sound in droid.personality.sounds[0:7]:
     await droid.play(sound, wait=True)
 
-def _heartbeat_success(droid: Astromech):
-  update_ha(True)
+def update_ha(entity: str, available: bool):
+  try:
+    response = requests.post(
+        url=f"http://colossus.home.mcgachey.org:8123/api/states/{entity}",
+        headers={'Authorization': f"Bearer {secure.HA_TOKEN}"},
+        json={
+            'state': 'on' if available else 'off',
+          },
+    )
+    if response.status_code != 200:
+      print(f"[heartbeat] HA update failed for {entity}: {response}", flush=True)
+  except Exception as e:
+    print(f"[heartbeat] HA update error for {entity}: {e}", flush=True)
 
-def _heartbeat_failure(droid: Astromech):
-  update_ha(False)
-
-def update_ha(available: bool):
-  response = requests.post(
-      url=f"http://colossus.home.mcgachey.org:8123/api/states/binary_sensor.r2_t2",
-      headers={'Authorization': f"Bearer {secure.HA_TOKEN}"},
-      json={
-          'state': 'on' if available else 'off',
-        },
-  )
-  if response.status_code != 200:
-    print(f"Response: {response}")
+async def heartbeat_loop():
+  while True:
+    await asyncio.sleep(60)
+    for alias, entity in ha_entities.items():
+      droid = droids.get(alias)
+      if not droid:
+        continue
+      available = droid._client is not None and droid._client.is_connected
+      update_ha(entity, available)
+      print(f"[heartbeat] {alias}: {'on' if available else 'off'}", flush=True)
 
 async def connect_droids():
   for alias, droid in droids.items():
@@ -107,6 +118,7 @@ async def main():
       serve(app, config),
       run_beacon(beacon_payload),
       connect_droids(),
+      heartbeat_loop(),
   )
 
 if __name__ == '__main__':
