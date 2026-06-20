@@ -95,8 +95,11 @@ async def main():
     if alias == droid.mac_address:
       continue
     print(f"Connecting to {alias} ({droid.mac_address})...", flush=True)
-    await droid.connect()
-    print(f"Connected to {alias}", flush=True)
+    try:
+      await droid.connect()
+      print(f"Connected to {alias}", flush=True)
+    except Exception as e:
+      print(f"Could not connect to {alias}: {e}", flush=True)
   await asyncio.gather(
       serve(app, config),
       # droid.keep_alive(
