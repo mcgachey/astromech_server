@@ -91,20 +91,25 @@ async def update_ha(entity: str, available: bool):
   loop = asyncio.get_running_loop()
   await loop.run_in_executor(None, _update_ha_sync, entity, available)
 
+async def check_droid(alias: str, entity: str):
+  droid = droids.get(alias)
+  if not droid:
+    return
+  try:
+    await droid.ping()
+    available = True
+  except Exception:
+    available = False
+  await update_ha(entity, available)
+  print(f"[heartbeat] {alias}: {'on' if available else 'off'}", flush=True)
+
 async def heartbeat_loop():
   while True:
     await asyncio.sleep(60)
-    for alias, entity in ha_entities.items():
-      droid = droids.get(alias)
-      if not droid:
-        continue
-      try:
-        await droid.ping()
-        available = True
-      except Exception:
-        available = False
-      await update_ha(entity, available)
-      print(f"[heartbeat] {alias}: {'on' if available else 'off'}", flush=True)
+    await asyncio.gather(*[
+      check_droid(alias, entity)
+      for alias, entity in ha_entities.items()
+    ])
 
 async def connect_droids():
   for alias, droid in droids.items():
@@ -116,6 +121,10 @@ async def connect_droids():
       print(f"Connected to {alias}", flush=True)
     except Exception as e:
       print(f"Could not connect to {alias}: {e}", flush=True)
+  await asyncio.gather(*[
+    check_droid(alias, entity)
+    for alias, entity in ha_entities.items()
+  ])
 
 async def main():
   config = Config()
