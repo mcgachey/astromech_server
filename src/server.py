@@ -6,6 +6,9 @@ from hypercorn.asyncio import serve
 import requests
 import yaml
 
+import traceback
+from bleak.exc import BleakDBusError, BleakDeviceNotFoundError
+
 from libastromech import Astromech, Personality, R2_Unit, BB_Unit, personality_beacon_payload, run_beacon, start_beacon
 import secure
 
@@ -13,6 +16,7 @@ app = Flask(__name__)
 asgi_app = WsgiToAsgi(app)
 droids: dict[str, Astromech] = {}
 ha_entities: dict[str, str] = {}
+droid_status: dict[str, bool] = {}
 
 DROID_TYPES = {
   'r2': R2_Unit,
@@ -40,24 +44,34 @@ def get_droid(droid_id: str) -> Astromech:
     raise KeyError(f"Unknown droid: {droid_id}")
   return droid
 
+DROID_UNAVAILABLE_ERRORS = (BleakDBusError, BleakDeviceNotFoundError)
+
 @app.route('/droids/<droid_id>/beep/<int:sound_id>', methods=['POST'])
 async def beep(droid_id: str, sound_id: int):
   droid = get_droid(droid_id)
   turn_head = 'turn_head' in request.args
   sound = droid.personality.sounds[sound_id]
-  if turn_head:
-    await asyncio.gather(
-      droid.play(sound, wait=False),
-      droid.look_around(),
-    )
-  else:
-    await droid.play(sound, wait=False)
+  try:
+    if turn_head:
+      await asyncio.gather(
+        droid.play(sound, wait=False),
+        droid.look_around(),
+      )
+    else:
+      await droid.play(sound, wait=False)
+  except DROID_UNAVAILABLE_ERRORS as e:
+    print(f"[http] {request.method} {request.path} failed: {e}", flush=True)
+    return {'error': str(e)}, 503
   return {'ms': sound.ms, 'turn_head': turn_head}
 
 @app.route('/droids/<droid_id>/demo', methods=['POST'])
 async def demo(droid_id: str):
   droid = get_droid(droid_id)
-  await run_demo(droid)
+  try:
+    await run_demo(droid)
+  except DROID_UNAVAILABLE_ERRORS as e:
+    print(f"[http] {request.method} {request.path} failed: {e}", flush=True)
+    return {'error': str(e)}, 503
   return {}
 
 async def run_demo(droid: Astromech):
@@ -92,24 +106,36 @@ async def update_ha(entity: str, available: bool):
   await loop.run_in_executor(None, _update_ha_sync, entity, available)
 
 async def check_droid(alias: str, entity: str):
-  droid = droids.get(alias)
-  if not droid:
-    return
   try:
-    await droid.ping()
-    available = True
+    droid = droids.get(alias)
+    if not droid:
+      return
+    try:
+      await droid.ping()
+      available = True
+    except Exception:
+      available = False
+    await update_ha(entity, available)
+    prev = droid_status.get(alias)
+    if prev != available:
+      label = 'connected' if available else 'disconnected'
+      print(f"[heartbeat] {alias} {label}", flush=True)
+      droid_status[alias] = available
   except Exception:
-    available = False
-  await update_ha(entity, available)
-  print(f"[heartbeat] {alias}: {'on' if available else 'off'}", flush=True)
+    print(f"[heartbeat] {alias} check failed unexpectedly:", flush=True)
+    traceback.print_exc()
 
 async def heartbeat_loop():
   while True:
-    await asyncio.sleep(60)
-    await asyncio.gather(*[
-      check_droid(alias, entity)
-      for alias, entity in ha_entities.items()
-    ])
+    try:
+      await asyncio.sleep(60)
+      await asyncio.gather(*[
+        check_droid(alias, entity)
+        for alias, entity in ha_entities.items()
+      ])
+    except Exception:
+      print("[heartbeat] cycle failed unexpectedly:", flush=True)
+      traceback.print_exc()
 
 async def connect_droids():
   for alias, droid in droids.items():
@@ -126,17 +152,30 @@ async def connect_droids():
     for alias, entity in ha_entities.items()
   ])
 
+async def _run_forever(name, coro_fn, *args):
+  while True:
+    try:
+      await coro_fn(*args)
+    except Exception:
+      print(f"[server] {name} crashed, restarting in 5s:", flush=True)
+      traceback.print_exc()
+      await asyncio.sleep(5)
+
 async def main():
   config = Config()
   config.bind = '0.0.0.0:5050'
   beacon_payload = personality_beacon_payload(affiliation='silent', chip_id=0x01)
   load_droids('/config/droids.yml')
   start_beacon(beacon_payload)
+  try:
+    await connect_droids()
+  except Exception:
+    print("[server] connect_droids failed, continuing:", flush=True)
+    traceback.print_exc()
   await asyncio.gather(
       serve(app, config),
-      run_beacon(beacon_payload),
-      connect_droids(),
-      heartbeat_loop(),
+      _run_forever('beacon', run_beacon, beacon_payload),
+      _run_forever('heartbeat', heartbeat_loop),
   )
 
 if __name__ == '__main__':
