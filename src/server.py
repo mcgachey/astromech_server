@@ -1,15 +1,17 @@
 from asgiref.wsgi import WsgiToAsgi
 import asyncio
+from datetime import datetime, timezone
 from flask import Flask, request
 from hypercorn.config import Config
 from hypercorn.asyncio import serve
+from typing import Optional
 import requests
 import yaml
 
 import traceback
 from bleak.exc import BleakDBusError, BleakDeviceNotFoundError
 
-from libastromech import Astromech, Personality, R2_Unit, BB_Unit, location_beacon_payload, run_beacon
+from libastromech import Astromech, Personality, R2_Unit, BB_Unit, personality_beacon_payload, run_beacon
 import secure
 
 app = Flask(__name__)
@@ -17,6 +19,9 @@ asgi_app = WsgiToAsgi(app)
 droids: dict[str, Astromech] = {}
 ha_entities: dict[str, str] = {}
 droid_status: dict[str, bool] = {}
+droid_last_seen: dict[str, Optional[datetime]] = {}
+beacon_active: bool = False
+beacon_registered_at: Optional[datetime] = None
 
 DROID_TYPES = {
   'r2': R2_Unit,
@@ -113,6 +118,7 @@ async def check_droid(alias: str, entity: str):
     try:
       await droid.ping()
       available = True
+      droid_last_seen[alias] = datetime.now(timezone.utc)
     except Exception:
       available = False
     await update_ha(entity, available)
@@ -152,6 +158,34 @@ async def connect_droids():
     for alias, entity in ha_entities.items()
   ])
 
+@app.route('/health')
+async def health():
+  now = datetime.now(timezone.utc)
+  def droid_info(alias: str) -> dict:
+    last = droid_last_seen.get(alias)
+    return {
+      'connected': droid_status.get(alias),
+      'last_seen': last.isoformat() if last else None,
+      'last_seen_secs_ago': round((now - last).total_seconds()) if last else None,
+    }
+  return {
+    'beacon': {
+      'active': beacon_active,
+      'registered_at': beacon_registered_at.isoformat() if beacon_registered_at else None,
+      'registered_secs_ago': round((now - beacon_registered_at).total_seconds()) if beacon_registered_at else None,
+    },
+    'droids': {alias: droid_info(alias) for alias in ha_entities},
+  }
+
+async def _tracked_beacon(payload: bytes):
+  global beacon_active, beacon_registered_at
+  beacon_registered_at = datetime.now(timezone.utc)
+  beacon_active = True
+  try:
+    await run_beacon(payload)
+  finally:
+    beacon_active = False
+
 async def _run_forever(name, coro_fn, *args):
   while True:
     try:
@@ -164,7 +198,7 @@ async def _run_forever(name, coro_fn, *args):
 async def main():
   config = Config()
   config.bind = '0.0.0.0:5050'
-  beacon_payload = location_beacon_payload(location_id=4)
+  beacon_payload = personality_beacon_payload(affiliation='silent', chip_id=0x01)
   load_droids('/config/droids.yml')
   try:
     await connect_droids()
@@ -173,7 +207,7 @@ async def main():
     traceback.print_exc()
   await asyncio.gather(
       serve(app, config),
-      _run_forever('beacon', run_beacon, beacon_payload),
+      _run_forever('beacon', _tracked_beacon, beacon_payload),
       _run_forever('heartbeat', heartbeat_loop),
   )
 
