@@ -9,7 +9,7 @@ import yaml
 import traceback
 from bleak.exc import BleakDBusError, BleakDeviceNotFoundError
 
-from libastromech import Astromech, Personality, R2_Unit, BB_Unit, personality_beacon_payload, run_beacon, start_beacon
+from libastromech import Astromech, Personality, R2_Unit, BB_Unit, location_beacon_payload, run_beacon
 import secure
 
 app = Flask(__name__)
@@ -164,9 +164,8 @@ async def _run_forever(name, coro_fn, *args):
 async def main():
   config = Config()
   config.bind = '0.0.0.0:5050'
-  beacon_payload = personality_beacon_payload(affiliation='silent', chip_id=0x01)
+  beacon_payload = location_beacon_payload(location_id=4)
   load_droids('/config/droids.yml')
-  start_beacon(beacon_payload)
   try:
     await connect_droids()
   except Exception:
