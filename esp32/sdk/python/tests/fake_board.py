@@ -97,6 +97,18 @@ def droid_handler(state=None):
             return {"ms": args["ms"]}
         if cmd == "stop":
             return {}
+        if cmd == "motor":
+            if not state["connected"]:
+                raise Fail("droid_unavailable", "cannot reach droid")
+            if args.get("motor") not in ("left", "right") or not 0 <= args.get("speed", -1) <= 255:
+                raise Fail("invalid_argument", "motor/speed")
+            return {}
+        if cmd == "rotate_head":
+            if not state["connected"]:
+                raise Fail("droid_unavailable", "cannot reach droid")
+            if args.get("direction") not in ("left", "right"):
+                raise Fail("invalid_argument", "direction")
+            return {}
         if cmd == "connect":
             state["connected"] = True
             return {"connect_ms": 800}

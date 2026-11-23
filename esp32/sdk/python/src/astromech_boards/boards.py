@@ -220,6 +220,19 @@ class DroidBoard(Board):
         """Stop the wheels immediately (answered even while a move is running)."""
         self._link.request("stop", timeout=10.0)
 
+    def motor(self, motor, speed, *, backward=False, ramp_ms=None):
+        """Start, change or stop one wheel. ``motor`` is ``left`` or ``right``; ``speed`` 0-255
+        (0 stops it). The wheel keeps running until the next call or :meth:`stop`: THIS MOVES THE
+        DROID, so make sure it is somewhere safe."""
+        args = {"motor": motor, "speed": speed, "backward": bool(backward)}
+        if ramp_ms is not None:
+            args["ramp_ms"] = ramp_ms
+        self._link.request("motor", args, timeout=10.0)
+
+    def rotate_head(self, direction, timeout=_T_HEAD):
+        """Turn the head ``left`` or ``right`` for 1.5 s, then stop it (R-series only)."""
+        self._link.request("rotate_head", {"direction": direction}, timeout=timeout)
+
     def demo(self, timeout=_T_DEMO):
         """Centre head, look around while playing the first 7 sounds, centre head.
         Head only; never drives the wheels."""

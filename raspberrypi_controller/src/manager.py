@@ -25,6 +25,9 @@ DROID_COMMANDS = {"beep", "play", "volume", "center_head", "look_around", "demo"
                   "check", "diagnose"}
 BEACON_COMMANDS = {"start", "stop"}
 COMMON_COMMANDS = {"ping", "reboot", "factory_reset"}
+# Drive the droid (per-motor power, head turns, wheel stop). Only accepted from local programs (loopback
+# clients such as the robotics server on the same Pi), never from the browser UI on the network.
+WHEEL_COMMANDS = {"motor", "rotate_head", "stop"}
 
 
 class ApiError(Exception):
@@ -462,9 +465,13 @@ class BoardManager:
         lambda b: b.set_beacon(kind, location_id=location_id, persist=persist),
         {"kind": kind, "location_id": location_id, "persist": persist})
 
-  async def command(self, device_id: str, cmd: str, args: dict) -> dict:
+  async def command(self, device_id: str, cmd: str, args: dict, local: bool = False) -> dict:
     rec = self._require(device_id)
     allowed = COMMON_COMMANDS | (DROID_COMMANDS if rec["role"] == "droid" else BEACON_COMMANDS)
+    if rec["role"] == "droid" and cmd in WHEEL_COMMANDS:
+      if not local:
+        raise ApiError(403, "local_only", f"{cmd!r} is only accepted from programs on the controller itself")
+      allowed = allowed | WHEEL_COMMANDS
     if cmd not in allowed:
       raise ApiError(400, "unknown_command", f"{cmd!r} is not available for a {rec['role']} board")
 
@@ -492,12 +499,28 @@ class BoardManager:
       level = num("level", 0, 31)
       return await self._call(device_id, f"volume {level}", lambda b: b.set_volume(level),
                               {"level": level})
+    if cmd == "motor":
+      motor = args.get("motor")
+      if motor not in ("left", "right"):
+        raise ApiError(400, "invalid_argument", "motor must be left or right")
+      speed = num("speed", 0, 255)
+      ramp = num("ramp_ms", 0, 65535) if args.get("ramp_ms") is not None else None
+      backward = bool(args.get("backward"))
+      return await self._call(device_id, f"motor {motor} {'-' if backward else '+'}{speed}",
+                              lambda b: b.motor(motor, speed, backward=backward, ramp_ms=ramp),
+                              {"motor": motor, "speed": speed, "backward": backward, "ramp_ms": ramp})
+    if cmd == "rotate_head":
+      direction = args.get("direction")
+      if direction not in ("left", "right"):
+        raise ApiError(400, "invalid_argument", "direction must be left or right")
+      return await self._call(device_id, f"rotate_head {direction}", lambda b: b.rotate_head(direction),
+                              {"direction": direction})
     simple = {
         "center_head": lambda b: b.center_head(), "look_around": lambda b: b.look_around(),
         "demo": lambda b: b.demo(), "connect": lambda b: b.connect(),
         "disconnect": lambda b: b.disconnect(), "check": lambda b: b.check_alive(),
         "diagnose": lambda b: b.diagnose(), "ping": lambda b: b.ping(),
         "reboot": lambda b: b.reboot(), "factory_reset": lambda b: b.factory_reset(),
-        "start": lambda b: b.start(), "stop": lambda b: b.stop(),
+        "start": lambda b: b.start(), "stop": lambda b: b.stop(),  # beacon start/stop; droid wheel stop
     }
     return await self._call(device_id, cmd, simple[cmd])

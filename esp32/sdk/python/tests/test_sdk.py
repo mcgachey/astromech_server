@@ -137,6 +137,24 @@ class DroidTests(unittest.TestCase):
             board.move("forward", 99999)
         board.close()
 
+    def test_motor_and_rotate_head(self):
+        board, ser, _ = make_droid()
+        with self.assertRaises(DroidUnavailable):
+            board.motor("left", 100)
+        board.connect()
+        board.motor("right", 0x80, backward=True, ramp_ms=100)
+        board.motor("left", 0)
+        sent = [m for m in ser.written if m["cmd"] == "motor"]
+        self.assertEqual(sent[-2]["args"], {"motor": "right", "speed": 0x80, "backward": True, "ramp_ms": 100})
+        self.assertEqual(sent[-1]["args"], {"motor": "left", "speed": 0, "backward": False})
+        with self.assertRaises(InvalidArgument):
+            board.motor("middle", 10)
+        board.rotate_head("right")
+        self.assertEqual([m for m in ser.written if m["cmd"] == "rotate_head"][-1]["args"], {"direction": "right"})
+        with self.assertRaises(InvalidArgument):
+            board.rotate_head("up")
+        board.close()
+
     def test_droid_state_events(self):
         board, ser, _ = make_droid()
         self.assertFalse(board.wait_for_droid(0.1))
