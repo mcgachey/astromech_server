@@ -1,0 +1,7 @@
+asgiref==3.8.1
+Flask==3.1.0
+Hypercorn==0.17.3
+PyYAML==6.0.2
+pyserial>=3.5
+esptool==5.6.0
+bleak>=0.22

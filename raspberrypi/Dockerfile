@@ -9,10 +9,10 @@ WORKDIR /app
 COPY libastromech /app/libastromech
 RUN pip install --no-cache-dir /app/libastromech
 
-COPY astromech_server/requirements.txt /app/requirements.txt
+COPY astromech_server/raspberrypi/requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir -r /app/requirements.txt
 
-COPY astromech_server/src /app/src
+COPY astromech_server/raspberrypi/src /app/src
 
 WORKDIR /app/src
 CMD ["python", "server.py"]

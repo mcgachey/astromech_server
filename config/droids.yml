@@ -1,6 +1,7 @@
 droids:
   - alias: r2-t2
     mac_address: "F7:E6:74:95:E5:53"
+    device_id: "f481850ee93c"
     personality: resistance_blue
     type: r2
     home_assistant_entity: binary_sensor.r2_t2

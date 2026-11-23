@@ -120,7 +120,14 @@ async def check_droid(alias: str, entity: str):
       available = True
       droid_last_seen[alias] = datetime.now(timezone.utc)
     except Exception:
-      available = False
+      print(f"[heartbeat] {alias} ping failed, reconnecting...", flush=True)
+      try:
+        await droid.connect()
+        available = True
+        droid_last_seen[alias] = datetime.now(timezone.utc)
+      except Exception as e:
+        print(f"[heartbeat] {alias} reconnect failed: {e}", flush=True)
+        available = False
     await update_ha(entity, available)
     prev = droid_status.get(alias)
     if prev != available:

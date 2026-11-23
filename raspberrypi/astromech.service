@@ -4,8 +4,8 @@ Wants=network-online.target
 After=network-online.target
 
 [Service]
-WorkingDirectory=/home/mcgachey/code/astromech_server/
-ExecStart=/bin/bash /home/mcgachey/code/astromech_server/bin/astromech_service.sh
+WorkingDirectory=/home/mcgachey/code/astromech_server/raspberrypi/
+ExecStart=/bin/bash /home/mcgachey/code/astromech_server/raspberrypi/bin/astromech_service.sh
 Restart=always
 StandardOutput=syslog
 StandardError=syslog

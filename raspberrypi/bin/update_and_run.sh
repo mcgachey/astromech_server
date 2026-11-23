@@ -4,4 +4,4 @@ git pull
 cd ~/code/libastromech/
 git pull
 cd -
-./bin/run_docker.sh /home/mcgachey/code/astromech_server/config/
+./raspberrypi/bin/run_docker.sh /home/mcgachey/code/astromech_server/config/

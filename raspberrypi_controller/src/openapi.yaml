@@ -1,0 +1,555 @@
+openapi: 3.0.3
+info:
+  title: Astromech Controller API
+  version: 1.0.0
+  description: |
+    Master controller for the astromech ESP32 boards (droid controllers and keep-awake beacons).
+    Boards are identified by their `device_id` (see `GET /api/boards`).
+
+    Wheel movement (`move` / `stop`) is deliberately not part of this API.
+    **Try it out** sends real commands to the attached boards and droids.
+servers:
+  - url: /
+tags:
+  - name: Boards
+  - name: Commands
+  - name: Firmware
+  - name: Logs
+  - name: Home Assistant
+  - name: Demo
+paths:
+  /api/boards:
+    get:
+      tags: [Boards]
+      summary: List known boards
+      responses:
+        '200':
+          description: Boards, sorted by role then name
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Board'}}
+  /api/boards/scan:
+    post:
+      tags: [Boards]
+      summary: Scan the serial ports for boards
+      description: Probes ports not already in use and connects to any boards found.
+      responses:
+        '200':
+          description: Boards after the scan
+          content:
+            application/json:
+              schema: {type: array, items: {$ref: '#/components/schemas/Board'}}
+  /api/boards/{device_id}:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    get:
+      tags: [Boards]
+      summary: Describe one board
+      responses:
+        '200':
+          description: The board
+          content: {application/json: {schema: {$ref: '#/components/schemas/Board'}}}
+        '404': {$ref: '#/components/responses/Error'}
+    patch:
+      tags: [Boards]
+      summary: Update controller-side board settings
+      description: Name, notes, demo sound and Home Assistant entity. Not stored on the board.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: {type: string, minLength: 1, maxLength: 40}
+                notes: {type: string, maxLength: 2000}
+                demo_sound: {type: integer, minimum: 0}
+                ha_enabled: {type: boolean}
+                ha_entity: {type: string, example: binary_sensor.r2_t2}
+      responses:
+        '200':
+          description: The updated board
+          content: {application/json: {schema: {$ref: '#/components/schemas/Board'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [Boards]
+      summary: Forget a board
+      description: Removes it from the registry and deletes its log. A connected board reappears on the next scan.
+      responses:
+        '200': {$ref: '#/components/responses/Ok'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/boards/{device_id}/state:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    get:
+      tags: [Boards]
+      summary: Live status and saved configuration
+      description: Includes the sound bank for configured droids.
+      responses:
+        '200':
+          description: State read from the board
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: {type: object, additionalProperties: true}
+                  config: {type: object, additionalProperties: true}
+                  sounds:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        index: {type: integer}
+                        group: {type: integer}
+                        sound: {type: integer}
+                        ms: {type: integer}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/boards/{device_id}/config:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    put:
+      tags: [Boards]
+      summary: Write configuration to the board (NVS)
+      description: |
+        Droid boards take `alias`, `address`, `type`, `personality` and `reboot`.
+        Beacon boards take `kind`, `location_id` and `persist`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                alias: {type: string, maxLength: 32}
+                address: {type: string, example: 'AA:BB:CC:DD:EE:FF'}
+                type: {type: string, enum: [r2, bb]}
+                personality: {type: string}
+                reboot: {type: boolean, default: true}
+                kind: {type: string, enum: [silent, location]}
+                location_id: {type: integer, minimum: 0, maximum: 255}
+                persist: {type: boolean, default: true}
+      responses:
+        '200':
+          description: The board's reply
+          content: {application/json: {schema: {type: object, additionalProperties: true}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+        '504': {$ref: '#/components/responses/Error'}
+  /api/boards/{device_id}/commands/{command}:
+    parameters:
+      - {$ref: '#/components/parameters/DeviceId'}
+      - name: command
+        in: path
+        required: true
+        description: |
+          Droid boards: `beep`, `play`, `volume`, `center_head`, `look_around`, `demo`, `connect`, `disconnect`,
+          `check`, `diagnose`. Beacon boards: `start`, `stop`. All boards: `ping`, `reboot`, `factory_reset`
+          (**erases all saved settings on the board**).
+        schema:
+          type: string
+          enum: [beep, play, volume, center_head, look_around, demo, connect, disconnect, check, diagnose,
+                 start, stop, ping, reboot, factory_reset]
+    post:
+      tags: [Commands]
+      summary: Send a command to a board
+      description: |
+        The body carries the command's arguments (omit it for commands without any).
+        - `beep`: `sound` (default: the board's demo sound), `turn_head`, `wait` (return when the sound ends)
+        - `play`: `group` and `sound` (0-255): play a clip by raw number, ignoring the personality; returns without waiting for it to end
+        - `volume`: `level` 0-31
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sound: {type: integer, minimum: 0}
+                turn_head: {type: boolean}
+                wait: {type: boolean}
+                group: {type: integer, minimum: 0, maximum: 255}
+                level: {type: integer, minimum: 0, maximum: 31}
+            examples:
+              beep: {summary: Beep, value: {sound: 0, turn_head: false, wait: true}}
+              play: {summary: Play a raw clip, value: {group: 1, sound: 0}}
+              volume: {summary: Set volume, value: {level: 20}}
+      responses:
+        '200':
+          description: The board's reply
+          content: {application/json: {schema: {type: object, additionalProperties: true}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+        '504': {$ref: '#/components/responses/Error'}
+  /api/boards/{device_id}/logs:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    get:
+      tags: [Logs]
+      summary: Read the board's log
+      parameters:
+        - {name: since, in: query, description: Only entries after this sequence number, schema: {type: integer, default: 0}}
+        - {name: limit, in: query, schema: {type: integer, default: 500}}
+      responses:
+        '200':
+          description: Log entries, oldest first
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entries: {type: array, items: {$ref: '#/components/schemas/LogEntry'}}
+                  last_seq: {type: integer}
+        '404': {$ref: '#/components/responses/Error'}
+    delete:
+      tags: [Logs]
+      summary: Clear the board's log
+      responses:
+        '200': {$ref: '#/components/responses/Ok'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/boards/{device_id}/home_assistant/send:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    post:
+      tags: [Home Assistant]
+      summary: Send the droid's availability to Home Assistant now
+      responses:
+        '200':
+          description: Sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  entity: {type: string}
+                  state: {type: string, enum: ['on', 'off']}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+  /api/bluetooth/scan:
+    post:
+      tags: [Bluetooth]
+      summary: Scan for droids over Bluetooth LE
+      description: |
+        Scans with the Raspberry Pi's Bluetooth adapter for `timeout` seconds (the request blocks
+        until done) and returns the droids found (devices advertising the name `DROID`), or every
+        device with `all: true`.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                timeout: {type: number, minimum: 1, maximum: 30, default: 5}
+                all: {type: boolean, default: false}
+      responses:
+        '200':
+          description: Devices seen
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  scanned_at: {type: number}
+                  devices:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name: {type: string}
+                        address: {type: string}
+                        rssi: {type: integer, nullable: true}
+                        droid: {type: boolean}
+        '400': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+  /api/firmware:
+    get:
+      tags: [Firmware]
+      summary: List firmware images
+      description: |
+        Images pushed by `make install` (esp32/), newest first, with the firmware version each
+        online board currently runs. Invalid images (checksum mismatch, missing files) are listed
+        with `valid: false` and an `error`, and cannot be flashed.
+      parameters:
+        - {name: role, in: query, schema: {type: string, enum: [droid, beacon]}}
+      responses:
+        '200':
+          description: The images
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images: {type: array, items: {$ref: '#/components/schemas/FirmwareImage'}}
+                  scanned_at: {type: number, nullable: true}
+                  boards:
+                    type: object
+                    description: device_id to running firmware version, for online boards
+                    additionalProperties: {type: string}
+  /api/firmware/scan:
+    post:
+      tags: [Firmware]
+      summary: Scan the firmware directory for new images
+      responses:
+        '200':
+          description: The images after the scan
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  images: {type: array, items: {$ref: '#/components/schemas/FirmwareImage'}}
+                  scanned_at: {type: number}
+  /api/boards/{device_id}/firmware:
+    parameters: [{$ref: '#/components/parameters/DeviceId'}]
+    get:
+      tags: [Firmware]
+      summary: Firmware of one board
+      description: The running version, the images for this board's role, and the latest flash status.
+      responses:
+        '200':
+          description: Firmware state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  role: {type: string, enum: [droid, beacon]}
+                  running:
+                    type: object
+                    nullable: true
+                    properties:
+                      version: {type: string}
+                      build: {type: string}
+                  flash: {$ref: '#/components/schemas/FlashStatus'}
+                  images: {type: array, items: {$ref: '#/components/schemas/FirmwareImage'}}
+        '404': {$ref: '#/components/responses/Error'}
+    post:
+      tags: [Firmware]
+      summary: Flash a firmware version onto the board
+      description: |
+        **Writes the board's flash** (bootloader, partition table and app; settings in NVS are kept).
+        Runs in the background and returns 202: poll `GET` (or the board's `flash` field) until
+        `active` is false. The board is disconnected while it is written and reconnects afterwards.
+        Only images for the board's own role are accepted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: {type: string, example: 0.2.0}
+      responses:
+        '202':
+          description: Flash started
+          content: {application/json: {schema: {$ref: '#/components/schemas/FlashStatus'}}}
+        '400': {$ref: '#/components/responses/Error'}
+        '404': {$ref: '#/components/responses/Error'}
+        '409': {$ref: '#/components/responses/Error'}
+  /api/home_assistant:
+    get:
+      tags: [Home Assistant]
+      summary: Home Assistant connection settings
+      description: The token is never returned; `token_set` says whether one is saved.
+      responses:
+        '200':
+          description: Settings
+          content: {application/json: {schema: {$ref: '#/components/schemas/HaSettings'}}}
+    put:
+      tags: [Home Assistant]
+      summary: Save Home Assistant connection settings
+      description: Omit `token` (or leave it empty) to keep the saved one; `clear_token` removes it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: {type: boolean}
+                url: {type: string, example: 'http://homeassistant.local:8123'}
+                token: {type: string, format: password}
+                clear_token: {type: boolean}
+                verify_tls: {type: boolean}
+                interval: {type: integer, minimum: 5, maximum: 3600}
+                timeout: {type: integer, minimum: 1, maximum: 60}
+      responses:
+        '200':
+          description: Saved settings
+          content: {application/json: {schema: {$ref: '#/components/schemas/HaSettings'}}}
+        '400': {$ref: '#/components/responses/Error'}
+  /api/home_assistant/test:
+    post:
+      tags: [Home Assistant]
+      summary: Test a Home Assistant connection
+      description: Uses the posted values; omitted or blank fields fall back to the saved settings.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                url: {type: string}
+                token: {type: string, format: password}
+                verify_tls: {type: boolean}
+                timeout: {type: integer}
+      responses:
+        '200':
+          description: Connected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: {type: boolean}
+                  location_name: {type: string, nullable: true}
+                  version: {type: string, nullable: true}
+        '400': {$ref: '#/components/responses/Error'}
+  /droids/{droid_id}/beep/{sound_id}:
+    post:
+      tags: [Demo]
+      summary: Play a sound (legacy API)
+      description: Same as the legacy raspberrypi server. `droid_id` is the droid's alias, device_id or MAC address from droids.yml.
+      parameters:
+        - {name: droid_id, in: path, required: true, schema: {type: string}}
+        - {name: sound_id, in: path, required: true, schema: {type: integer, minimum: 0}}
+        - {name: turn_head, in: query, description: 'Presence enables it (look around while playing)', allowEmptyValue: true, schema: {type: string}}
+      responses:
+        '200':
+          description: Played
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ms: {type: integer}
+                  turn_head: {type: boolean}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+        '504': {$ref: '#/components/responses/Error'}
+  /droids/{droid_id}/demo:
+    post:
+      tags: [Demo]
+      summary: Run the head-only demo (legacy API)
+      description: Centres the head, looks around while playing the first 7 sounds. Never moves the wheels.
+      parameters:
+        - {name: droid_id, in: path, required: true, schema: {type: string}}
+      responses:
+        '200': {description: Done, content: {application/json: {schema: {type: object}}}}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+        '504': {$ref: '#/components/responses/Error'}
+  /demo:
+    post:
+      tags: [Demo]
+      summary: Make a droid beep
+      description: The droid plays its demo sound and the call returns when it ends. It does not move the droid.
+      parameters:
+        - {name: droid, in: query, description: 'Droid alias from droids.yml (default: the first one with a device_id)', schema: {type: string}}
+      responses:
+        '200':
+          description: Played
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ms: {type: integer}
+                  sound: {type: integer}
+                  droid: {type: string}
+        '404': {$ref: '#/components/responses/Error'}
+        '503': {$ref: '#/components/responses/Error'}
+        '504': {$ref: '#/components/responses/Error'}
+components:
+  parameters:
+    DeviceId:
+      name: device_id
+      in: path
+      required: true
+      description: Board ID from `GET /api/boards`
+      schema: {type: string}
+  responses:
+    Ok:
+      description: Done
+      content: {application/json: {schema: {type: object, properties: {ok: {type: boolean}}}}}
+    Error:
+      description: Error
+      content: {application/json: {schema: {$ref: '#/components/schemas/Error'}}}
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: {type: string, example: unknown_board}
+        message: {type: string}
+    Board:
+      type: object
+      properties:
+        device_id: {type: string}
+        role: {type: string, enum: [droid, beacon]}
+        name: {type: string}
+        notes: {type: string}
+        demo_sound: {type: integer}
+        port: {type: string}
+        first_seen: {type: number}
+        last_seen: {type: number}
+        online: {type: boolean}
+        info: {type: object, additionalProperties: true}
+        error: {type: string}
+        flash: {$ref: '#/components/schemas/FlashStatus'}
+        ha_entity: {type: string}
+        ha_enabled: {type: boolean}
+        ha_status:
+          type: object
+          nullable: true
+          properties:
+            state: {type: string, enum: ['on', 'off']}
+            ok: {type: boolean}
+            ts: {type: number}
+            error: {type: string, nullable: true}
+    FirmwareImage:
+      type: object
+      properties:
+        role: {type: string, enum: [droid, beacon]}
+        version: {type: string, example: 0.2.0}
+        build_id: {type: string, description: git commit the image was built from}
+        created: {type: string}
+        size: {type: integer, description: total bytes of all files}
+        valid: {type: boolean}
+        error: {type: string}
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              name: {type: string}
+              offset: {type: string, example: '0x10000'}
+              size: {type: integer}
+    FlashStatus:
+      type: object
+      nullable: true
+      properties:
+        version: {type: string}
+        stage: {type: string, enum: [starting, releasing port, writing, restarting, done, failed]}
+        active: {type: boolean}
+        percent: {type: number}
+        error: {type: string, nullable: true}
+        started: {type: number}
+        finished: {type: number, nullable: true}
+    LogEntry:
+      type: object
+      properties:
+        seq: {type: integer}
+        ts: {type: number}
+        kind: {type: string, enum: [system, event, log, command, response, error]}
+        level: {type: string, enum: [info, warning, error]}
+        message: {type: string}
+        data: {}
+    HaSettings:
+      type: object
+      properties:
+        enabled: {type: boolean}
+        url: {type: string}
+        token_set: {type: boolean}
+        verify_tls: {type: boolean}
+        interval: {type: integer}
+        timeout: {type: integer}

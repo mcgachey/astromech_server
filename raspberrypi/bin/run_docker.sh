@@ -10,8 +10,9 @@ fi
 CONFIG_DIR="$(cd "$1" && pwd)"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
-CONTEXT_DIR="$(dirname "$PROJECT_DIR")"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"   # astromech_server/raspberrypi
+REPO_DIR="$(dirname "$PROJECT_DIR")"     # astromech_server
+CONTEXT_DIR="$(dirname "$REPO_DIR")"     # parent holding libastromech/ and astromech_server/
 
 docker build \
     -t astromech-server \

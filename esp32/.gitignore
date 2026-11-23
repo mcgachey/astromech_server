@@ -1,0 +1,7 @@
+.pio/
+__pycache__/
+*.egg-info/
+
+# Firmware packaging and per-machine install settings
+/dist/
+/install.conf

@@ -1,0 +1,10 @@
+# Copy to install.conf (gitignored) on the build machine.
+# Sourced by the Makefile, so keep it make syntax (VAR = value).
+
+# Host name or IP address of the Raspberry Pi running the controller.
+CONTROLLER_HOST = r2t2.local
+# ssh user on the Pi; it must be able to write FIRMWARE_DIR.
+CONTROLLER_USER = pi
+# Standard firmware location on the Pi. The controller container mounts it
+# read-only at /firmware (raspberrypi_controller/bin/run_docker.sh).
+FIRMWARE_DIR = /var/lib/astromech-controller/firmware
