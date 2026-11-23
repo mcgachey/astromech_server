@@ -6,7 +6,7 @@ info:
     Master controller for the astromech ESP32 boards (droid controllers and keep-awake beacons).
     Boards are identified by their `device_id` (see `GET /api/boards`).
 
-    Wheel movement (`move` / `stop`) is deliberately not part of this API.
+    Wheel movement (`move`) is not part of this API. The per-motor `motor`, `rotate_head` and droid `stop` commands are accepted only from clients on the controller itself (loopback); others get 403 `local_only`.
     **Try it out** sends real commands to the attached boards and droids.
 servers:
   - url: /
@@ -147,7 +147,7 @@ paths:
         schema:
           type: string
           enum: [beep, play, volume, center_head, look_around, demo, connect, disconnect, check, diagnose,
-                 start, stop, ping, reboot, factory_reset]
+                 start, stop, motor, rotate_head, ping, reboot, factory_reset]
     post:
       tags: [Commands]
       summary: Send a command to a board

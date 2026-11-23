@@ -312,6 +312,56 @@ static void cmdStop(Request& r) {
   r.ok();
 }
 
+// Per-motor wheel control. args: motor (left|right), backward (bool, default false), speed (0-255;
+// 0 stops that motor), ramp_ms (0-65535, optional; droid default if absent). The motor keeps running
+// until the next `motor` or `stop`. THIS MOVES THE DROID. Answered as soon as the droid accepts it.
+static void cmdMotor(Request& r) {
+  JsonObjectConst a = r.args();
+  if (!droidService.configured()) return r.fail(err::kNotConfigured, "no droid address configured");
+  if (!a["motor"].is<const char*>()) return r.fail(err::kInvalidArgument, "motor (left|right) is required");
+  String m = a["motor"].as<const char*>();
+  if (m != "left" && m != "right") return r.fail(err::kInvalidArgument, "motor must be left or right");
+  if (!a["backward"].isNull() && !a["backward"].is<bool>())
+    return r.fail(err::kInvalidArgument, "backward must be true or false");
+  if (!a["speed"].is<int>()) return r.fail(err::kInvalidArgument, "speed (0-255) is required");
+  int speed = a["speed"];
+  if (speed < 0 || speed > 255) return r.fail(err::kInvalidArgument, "speed must be 0-255");
+  int ramp = astromech::kDefault;
+  if (!a["ramp_ms"].isNull()) {
+    if (!a["ramp_ms"].is<int>()) return r.fail(err::kInvalidArgument, "ramp_ms must be an integer 0-65535");
+    ramp = a["ramp_ms"];
+    if (ramp < 0 || ramp > 65535) return r.fail(err::kInvalidArgument, "ramp_ms must be 0-65535");
+  }
+  if (!needDroid(r)) return;
+  const bool back = a["backward"] | false;
+  if (!droidService.droid()->setWheel(back ? astromech::Direction::Backward : astromech::Direction::Forward,
+                                      m == "left" ? astromech::Motor::Left : astromech::Motor::Right,
+                                      speed, ramp))
+    return unavailable(r);
+  r.ok();
+}
+
+// Turn the head one way for 1.5 s at a fixed speed, then stop it. args: direction (left|right).
+// Blocks for the turn (R-series only).
+static const int kHeadTurnSpeed = 0xa0;
+static const uint32_t kHeadTurnMs = 1500;
+
+static void cmdRotateHead(Request& r) {
+  JsonObjectConst a = r.args();
+  if (!droidService.configured()) return r.fail(err::kNotConfigured, "no droid address configured");
+  if (!a["direction"].is<const char*>()) return r.fail(err::kInvalidArgument, "direction (left|right) is required");
+  String dir = a["direction"].as<const char*>();
+  if (dir != "left" && dir != "right") return r.fail(err::kInvalidArgument, "direction must be left or right");
+  if (!needR2(r) || !needDroid(r)) return;
+  astromech::R2Unit* d = droidService.r2();
+  bool ok = d->rotateHead(dir == "right" ? astromech::Direction::Right : astromech::Direction::Left,
+                          kHeadTurnSpeed);
+  delay(kHeadTurnMs);
+  ok = d->rotateHead(astromech::Direction::Left, 0) && ok;  // speed 0 stops the head
+  if (!ok) return unavailable(r);
+  r.ok();
+}
+
 static const CommandServer::Command kCommands[] = {
     {"hello", cmdHello, false},
     {"ping", cmdPing, false},
@@ -333,6 +383,8 @@ static const CommandServer::Command kCommands[] = {
     {"look_around", cmdLookAround, true},
     {"demo", cmdDemo, true},
     {"move", cmdMove, true},
+    {"motor", cmdMotor, true},
+    {"rotate_head", cmdRotateHead, true},
 };
 
 static CommandServer server(kCommands, sizeof(kCommands) / sizeof(kCommands[0]));

@@ -88,6 +88,13 @@ Tests (with the SDK on the path): `cd tests && PYTHONPATH=../../esp32/sdk/python
 The OpenAPI spec is `src/openapi.yaml`, served as JSON at `/api/openapi.json` (keep it in sync
 when endpoints change).
 
+## Driving commands (local only)
+
+`POST /api/boards/<id>/commands/<cmd>` also takes `motor` (`{motor: left|right, speed: 0-255, backward, ramp_ms}`;
+persistent until the next `motor`/`stop`), `rotate_head` (`{direction: left|right}`, 1.5 s) and, for droids,
+`stop` (both wheels). They are accepted only from loopback clients (the robotics server on the same Pi);
+other clients get 403 `local_only`, and the web UI does not offer them.
+
 ## Legacy droid API
 
 Same paths and responses as the `raspberrypi` server. `<id>` is the droid's alias, `device_id` or

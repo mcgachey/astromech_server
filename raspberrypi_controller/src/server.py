@@ -104,7 +104,8 @@ async def board_config(device_id):
 
 @app.post("/api/boards/<device_id>/commands/<cmd>")
 async def board_command(device_id, cmd):
-  return jsonify(await manager.command(device_id, cmd, _body()))
+  local = request.remote_addr in ("127.0.0.1", "::1")
+  return jsonify(await manager.command(device_id, cmd, _body(), local=local))
 
 
 @app.get("/api/boards/<device_id>/logs")

@@ -87,6 +87,8 @@ them with a udev rule keyed on the serial number).
 | `look_around` | | `{}` (R-series only) |
 | `move` | `direction` (`forward`, `backward`, `spin_cw`, `spin_ccw`, `turn_cw`, `turn_ccw`), `ms` 1-5000, `speed` 1-255 (optional) | `ms`; **drives the wheels**, answered when the move ends. BB units: forward/backward only (`unsupported` otherwise) |
 | `stop` | | `{}`; stops the wheels at once. Inline, so it is answered while a `move` runs |
+| `motor` | `motor` (`left`, `right`), `backward` (bool, default false), `speed` 0-255 (0 stops that motor), `ramp_ms` 0-65535 (optional) | `{}`; **drives one wheel** and returns as soon as the droid accepts it. The motor keeps running until the next `motor` or `stop` (there is no timeout) |
+| `rotate_head` | `direction` (`left`, `right`) | `{}`; turns the head for 1.5 s at a fixed speed, then stops it; answered when it ends (R-series only) |
 | `demo` | | `{}`; centres the head, looks around while playing the first 7 sounds (R-series only); never drives the wheels |
 
 The board connects to the droid by itself after boot and re-connects when the
